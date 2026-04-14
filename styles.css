@@ -52,7 +52,7 @@ h1 {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.6rem 0.875rem;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 0.875rem;
   outline: none;
   transition: border-color 0.15s;
@@ -134,6 +134,11 @@ h1 {
   gap: 1rem 2rem;
 }
 
+.summary-item {
+  display: flex;
+  flex-direction: column;
+}
+
 .si-label {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -152,7 +157,7 @@ h1 {
 .si-value.net { color: var(--accent); font-size: 1.1rem; font-weight: 800; }
 
 .sep {
-  color: var(--border);
+  color: var(--text-muted);
   font-size: 1.4rem;
   line-height: 1;
   align-self: center;
@@ -174,6 +179,7 @@ h1 {
 }
 
 .club-card.owned { border-left-color: var(--accent); }
+.club-card.staff { border-left-color: var(--text-muted); }
 
 .club-header {
   display: flex;
@@ -240,6 +246,12 @@ h1 {
   flex-wrap: wrap;
   gap: 0.5rem 1.5rem;
   font-size: 0.78rem;
+}
+
+.total-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
 }
 
 .ti-label { color: var(--text-muted); }
