@@ -336,7 +336,7 @@ function renderResults(results) {
 function setStatus(message, isError = false) {
   const el = document.getElementById('status');
   el.textContent = message;
-  el.style.color = isError ? 'red' : 'inherit';
+  el.className = isError ? 'error' : '';
 }
 
 async function handleCalculate() {
