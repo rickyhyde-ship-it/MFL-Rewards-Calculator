@@ -292,36 +292,38 @@ function renderSummaryBar(results) {
 
 function renderClubCard(result) {
   const isStaff = result.ownershipType === 'Staff';
+  const hasManager = result.ownershipType === 'Owned | Hired Manager';
+  const cardClass = isStaff ? 'staff' : 'owned';
+
+  const badges = isStaff
+    ? `<span class="badge badge-secondary">Staff</span>`
+    : `<span class="badge badge-owned">Owned</span>${hasManager ? ' <span class="badge badge-secondary">Hired Manager</span>' : ''}`;
 
   const totalsRow = isStaff
     ? `
       <div class="totals-row">
-        <span>Gross: ${formatMFL(result.gross)}</span>
-        <span>Your Cut: ${formatPct(result.staffMultiplier)} = ${formatMFL(result.staffEarnings)}</span>
+        <span class="total-item"><span class="ti-label">Gross</span> <span class="ti-value">${formatMFL(result.gross)}</span></span>
+        <span class="total-item"><span class="ti-label">Your Cut</span> <span class="ti-value pos net">+${formatPct(result.staffMultiplier)} / +${formatMFL(result.staffEarnings)}</span></span>
       </div>`
     : `
       <div class="totals-row">
-        <span>Gross: ${formatMFL(result.gross)}</span>
-        <span>Player Loans: ${formatPct(result.playerMultiplier)} = -${formatMFL(result.playerLoanCost)}</span>
-        ${result.managerMultiplier > 0 ? `<span>Manager Fee: ${formatPct(result.managerMultiplier)} = -${formatMFL(result.managerFeeCost)}</span>` : ''}
-        <span>Net: ${formatMFL(result.net)}</span>
+        <span class="total-item"><span class="ti-label">Gross</span> <span class="ti-value pos">${formatMFL(result.gross)}</span></span>
+        <span class="total-item"><span class="ti-label">Loans</span> <span class="ti-value neg">−${formatPct(result.playerMultiplier)} / −${formatMFL(result.playerLoanCost)}</span></span>
+        ${result.managerMultiplier > 0 ? `<span class="total-item"><span class="ti-label">Manager</span> <span class="ti-value neg">−${formatPct(result.managerMultiplier)} / −${formatMFL(result.managerFeeCost)}</span></span>` : ''}
+        <span class="total-item"><span class="ti-label">Net</span> <span class="ti-value pos net">${formatMFL(result.net)}</span></span>
       </div>`;
 
   return `
-    <div class="club-card">
+    <div class="club-card ${cardClass}">
       <div class="club-header">
         <span class="club-name">${escapeHtml(result.clubName)}</span>
-        <span class="ownership-label ${isStaff ? 'staff' : 'owner'}">${escapeHtml(result.ownershipType)}</span>
+        <div class="badges">${badges}</div>
       </div>
-      <div class="comp-row">
-        <span class="comp-name">${escapeHtml(result.leagueName)}</span>
-        <span class="comp-detail">Rank ${result.leagueRank}</span>
-        <span class="comp-reward">${formatMFL(result.leagueReward)}</span>
-      </div>
-      <div class="comp-row">
-        <span class="comp-name">${escapeHtml(result.cupName)}</span>
-        <span class="comp-detail">${escapeHtml(result.cupStage)}</span>
-        <span class="comp-reward">${formatMFL(result.cupReward)}</span>
+      <div class="comp-grid">
+        <span class="comp-left">${escapeHtml(result.leagueName)}</span>
+        <span class="comp-right">Rank ${result.leagueRank} &nbsp;·&nbsp; ${formatMFL(result.leagueReward)}</span>
+        <span class="comp-left">${escapeHtml(result.cupName)}</span>
+        <span class="comp-right">${escapeHtml(result.cupStage)} &nbsp;·&nbsp; ${formatMFL(result.cupReward)}</span>
       </div>
       ${totalsRow}
     </div>
