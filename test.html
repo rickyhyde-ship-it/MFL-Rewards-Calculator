@@ -50,6 +50,168 @@
     assert('returns 0 for empty', parseRewardAmount([]), 0);
     assert('returns 0 for null', parseRewardAmount(null), 0);
 
+    section('getOwnershipType');
+    const noManagerContracts = { items: [
+      { type: 'PLAYER', status: 'ACTIVE', revenueShare: 0 }
+    ]};
+    const withManagerContracts = { items: [
+      { type: 'PLAYER', status: 'ACTIVE', revenueShare: 0 },
+      { type: 'MANAGER', status: 'ACTIVE', revenueShare: 2000, manager: '0xabc' }
+    ]};
+    const staffContracts = { items: [
+      { type: 'MANAGER', status: 'ACTIVE', revenueShare: 2000, manager: '0xme' }
+    ]};
+    assert('MFL_OWNER no manager = Owned', getOwnershipType('MFL_OWNER', noManagerContracts), 'Owned');
+    assert('MFL_OWNER with manager = Owned | Hired Manager', getOwnershipType('MFL_OWNER', withManagerContracts), 'Owned | Hired Manager');
+    assert('non-owner = Staff', getOwnershipType('sportingDirector', staffContracts), 'Staff');
+
+    section('getOwnerDeductions');
+    const mixedContracts = { items: [
+      { type: 'PLAYER', status: 'ACTIVE', revenueShare: 500 },
+      { type: 'PLAYER', status: 'ACTIVE', revenueShare: 300 },
+      { type: 'PLAYER', status: 'INACTIVE', revenueShare: 999 },
+      { type: 'MANAGER', status: 'ACTIVE', revenueShare: 2000 }
+    ]};
+    const deductions = getOwnerDeductions(mixedContracts);
+    assert('player multiplier sums active only', deductions.playerMultiplier, 0.08);
+    assert('manager multiplier', deductions.managerMultiplier, 0.20);
+
+    section('getStaffEarningsMultiplier');
+    assert('finds own contract by wallet', getStaffEarningsMultiplier(staffContracts, '0xme'), 0.20);
+    assert('returns 0 if wallet not found', getStaffEarningsMultiplier(staffContracts, '0xother'), 0);
+
+    section('sortLeagueMembers');
+    const leagueMembers = [
+      { clubId: 1, points: 4, goals: 7, goalsAgainst: 9 },
+      { clubId: 2, points: 12, goals: 15, goalsAgainst: 5 },
+      { clubId: 3, points: 4, goals: 2, goalsAgainst: 5 },
+      { clubId: 4, points: 4, goals: 7, goalsAgainst: 9 },
+      { clubId: 5, points: 15, goals: 17, goalsAgainst: 5 },
+    ];
+    const sorted = sortLeagueMembers(leagueMembers);
+    assert('first place has most points', sorted[0].clubId, 5);
+    assert('second place correct', sorted[1].clubId, 2);
+    assert('last place has worst GD', sorted[4].clubId, 3);
+
+    section('getLeagueRank');
+    assert('clear first place', getLeagueRank(leagueMembers, 5), 1);
+    assert('clear second place', getLeagueRank(leagueMembers, 2), 2);
+    assert('tied clubs get lower rank', getLeagueRank(leagueMembers, 1), 4);
+    assert('tied clubs get lower rank', getLeagueRank(leagueMembers, 4), 4);
+    assert('last place', getLeagueRank(leagueMembers, 3), 5);
+    assert('club not in list returns null', getLeagueRank(leagueMembers, 999), null);
+
+    section('getLeagueReward');
+    const mockLeagueComp = {
+      rewards: [
+        { ranks: '1', lines: ['2800 $MFL'] },
+        { ranks: '2', lines: ['2300 $MFL'] },
+        { ranks: '9-10', lines: ['1250 $MFL'] },
+        { ranks: '11', lines: ['1200 $MFL'] },
+        { ranks: '12', lines: ['1150 $MFL'] },
+      ],
+      schedule: {
+        stages: [{
+          groups: [{
+            members: [
+              { clubId: 100, points: 15, goals: 10, goalsAgainst: 2 },
+              { clubId: 200, points: 12, goals: 8, goalsAgainst: 4 },
+              { clubId: 300, points: 4, goals: 7, goalsAgainst: 9 },
+              { clubId: 400, points: 4, goals: 7, goalsAgainst: 9 },
+              { clubId: 500, points: 4, goals: 2, goalsAgainst: 5 },
+            ]
+          }]
+        }]
+      }
+    };
+    assert('rank 1 gets correct reward', getLeagueReward(mockLeagueComp, 100), 2800);
+    assert('rank 2 gets correct reward', getLeagueReward(mockLeagueComp, 200), 2300);
+    assert('tied rank falls to 9-10 reward', getLeagueReward(mockLeagueComp, 300), 1250);
+    assert('tied rank falls to 9-10 reward', getLeagueReward(mockLeagueComp, 400), 1250);
+    assert('last place gets rank 12 reward', getLeagueReward(mockLeagueComp, 500), 1150);
+    assert('club not in competition returns 0', getLeagueReward(mockLeagueComp, 999), 0);
+
+    section('getCupGroupWins');
+    const mockCupComp = {
+      rewards: [
+        { ranks: 'Winner', lines: ['1200 $MFL'], participants: [1728] },
+        { ranks: 'Runner-up', lines: ['900 $MFL'], participants: [3238] },
+        { ranks: 'Semifinalists', lines: ['650 $MFL'], participants: [1459, 5315] },
+        { ranks: 'Group Stage Win', lines: ['45 $MFL'] }
+      ],
+      schedule: {
+        stages: [{
+          groups: [
+            { members: [
+              { clubId: 1728, wins: 3, draws: 1, losses: 2, points: 10, goals: 8, goalsAgainst: 5 },
+              { clubId: 999, wins: 1, draws: 0, losses: 5, points: 3, goals: 2, goalsAgainst: 9 }
+            ]},
+            { members: [
+              { clubId: 3238, wins: 5, draws: 1, losses: 0, points: 16, goals: 12, goalsAgainst: 3 }
+            ]}
+          ]
+        }]
+      }
+    };
+
+    assert('finds group wins in first group', getCupGroupWins(mockCupComp, 1728), 3);
+    assert('finds group wins in second group', getCupGroupWins(mockCupComp, 3238), 5);
+    assert('returns 0 if club not found', getCupGroupWins(mockCupComp, 12345), 0);
+
+    section('getCupPlacementReward');
+    assert('winner gets correct reward', getCupPlacementReward(mockCupComp, 1728), 1200);
+    assert('runner-up gets correct reward', getCupPlacementReward(mockCupComp, 3238), 900);
+    assert('semifinalist gets correct reward', getCupPlacementReward(mockCupComp, 1459), 650);
+    assert('club not yet in knockout gets 0', getCupPlacementReward(mockCupComp, 999), 0);
+
+    section('getCupReward');
+    assert('winner: placement + group wins', getCupReward(mockCupComp, 1728), 1200 + (3 * 45));
+    assert('group stage only: wins * per-win prize', getCupReward(mockCupComp, 999), 1 * 45);
+
+    section('getCupStageLabel');
+    assert('winner label', getCupStageLabel(mockCupComp, 1728), 'Winner');
+    assert('semifinalist label', getCupStageLabel(mockCupComp, 1459), 'Semifinalists');
+    assert('group stage 1 win', getCupStageLabel(mockCupComp, 999), 'Group Stage, 1 win');
+
+    section('calculateClub');
+
+    const mockClubEntry = {
+      title: 'MFL_OWNER',
+      club: { id: 1728, name: 'Sporting Huaycán' }
+    };
+    const mockContracts = { items: [
+      { type: 'MANAGER', status: 'ACTIVE', revenueShare: 2000, manager: '0xvoid' },
+      { type: 'PLAYER', status: 'ACTIVE', revenueShare: 0 }
+    ]};
+    const mockLeague = {
+      name: 'Spark – League 116',
+      rewards: [{ ranks: '9-10', lines: ['1250 $MFL'] }],
+      schedule: { stages: [{ groups: [{ members: [
+        { clubId: 1728, points: 4, goals: 7, goalsAgainst: 9 }
+      ]}]}]}
+    };
+    const mockCup = {
+      name: 'Aspirants Cup – Tier 144',
+      rewards: [
+        { ranks: 'Winner', lines: ['1200 $MFL'], participants: [] },
+        { ranks: 'Group Stage Win', lines: ['45 $MFL'] }
+      ],
+      schedule: { stages: [{ groups: [{ members: [
+        { clubId: 1728, wins: 1, draws: 0, losses: 0, points: 3, goals: 2, goalsAgainst: 0 }
+      ]}]}]}
+    };
+
+    const result = calculateClub(mockClubEntry, mockContracts, mockLeague, mockCup, '0xecc6cc6ecf4782da');
+    assert('club name', result.clubName, 'Sporting Huaycán');
+    assert('ownership type', result.ownershipType, 'Owned | Hired Manager');
+    assert('gross = 1250 + 45', result.gross, 1295);
+    assert('player loan cost = 0', result.playerLoanCost, 0);
+    assert('manager fee cost = 259', result.managerFeeCost, 259);
+    assert('net = 1036', result.net, 1036);
+    assert('league rank', result.leagueRank, 1);
+    assert('league reward', result.leagueReward, 1250);
+    assert('cup reward', result.cupReward, 45);
+
     section('Summary');
     const summary = document.createElement('p');
     summary.textContent = `${passed} passed, ${failed} failed`;
