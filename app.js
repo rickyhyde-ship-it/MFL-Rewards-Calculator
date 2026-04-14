@@ -255,7 +255,7 @@ function renderSummaryBar(results) {
   const totalPlayerLoans = owned.reduce((sum, r) => sum + r.playerLoanCost, 0);
   const totalManagerFees = owned.reduce((sum, r) => sum + r.managerFeeCost, 0);
   const totalStaffEarnings = staff.reduce((sum, r) => sum + r.staffEarnings, 0);
-  const totalMFLEarnings = totalGross + totalStaffEarnings;
+  const totalMFLEarnings = roundUpToNearest005(totalGross + totalStaffEarnings);
   const net = roundUpToNearest005(
     totalGross - totalPlayerLoans - totalManagerFees + totalStaffEarnings
   );
