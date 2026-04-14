@@ -239,7 +239,7 @@ function calculateAll(clubResults) {
 // === RENDERING ===
 
 function formatMFL(amount) {
-  return `${amount.toFixed(2)} $MFL`;
+  return `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $MFL`;
 }
 
 function formatPct(multiplier) {
@@ -345,6 +345,20 @@ function setStatus(message, isError = false) {
   el.className = isError ? 'error' : '';
 }
 
+function setProgress(pct) {
+  const wrap = document.getElementById('progress-bar-wrap');
+  const bar = document.getElementById('progress-bar');
+  wrap.hidden = false;
+  bar.style.width = `${pct}%`;
+}
+
+function clearProgress() {
+  const wrap = document.getElementById('progress-bar-wrap');
+  const bar = document.getElementById('progress-bar');
+  wrap.hidden = true;
+  bar.style.width = '0%';
+}
+
 async function handleCalculate() {
   const walletAddress = document.getElementById('wallet-input').value.trim();
   if (!walletAddress) {
@@ -354,15 +368,41 @@ async function handleCalculate() {
 
   document.getElementById('results').hidden = true;
   document.getElementById('calculate-btn').disabled = true;
-  setStatus('Loading...');
+  setProgress(5);
+  setStatus('Fetching clubs...');
 
   try {
-    const rawData = await fetchAllForWallet(walletAddress);
+    const clubs = await fetchClubs(walletAddress);
 
-    if (rawData.length === 0) {
+    if (!clubs || clubs.length === 0) {
       setStatus('No clubs found for this wallet address.', true);
+      clearProgress();
       return;
     }
+
+    const total = clubs.length;
+    let loaded = 0;
+    setProgress(15);
+    setStatus(`Loading data for ${total} club${total !== 1 ? 's' : ''}...`);
+
+    const rawData = await Promise.all(
+      clubs.map(async (clubEntry) => {
+        const leagueEntry = clubEntry.competitions.find(c => c.type === 'LEAGUE');
+        const cupEntry = clubEntry.competitions.find(c => c.type === 'CUP');
+        const [contractsData, leagueComp, cupComp] = await Promise.all([
+          fetchContracts(clubEntry.club.id),
+          leagueEntry ? fetchCompetition(leagueEntry.id) : Promise.resolve(null),
+          cupEntry ? fetchCompetition(cupEntry.id) : Promise.resolve(null),
+        ]);
+        loaded++;
+        setProgress(15 + Math.round((loaded / total) * 75));
+        setStatus(`Loading data for ${total} club${total !== 1 ? 's' : ''}... (${loaded}/${total})`);
+        return { clubEntry, contractsData, leagueComp, cupComp };
+      })
+    );
+
+    setProgress(95);
+    setStatus('Calculating...');
 
     const results = rawData
       .filter(({ leagueComp, cupComp }) => leagueComp && cupComp)
@@ -371,9 +411,11 @@ async function handleCalculate() {
       );
 
     setStatus('');
+    clearProgress();
     renderResults(results);
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
+    clearProgress();
     console.error(err);
   } finally {
     document.getElementById('calculate-btn').disabled = false;

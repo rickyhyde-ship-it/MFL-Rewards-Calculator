@@ -80,11 +80,27 @@ h1 {
 #status {
   font-size: 0.875rem;
   color: var(--text-muted);
-  margin-bottom: 1rem;
+  margin-bottom: 0.4rem;
   min-height: 1.25rem;
 }
 
 #status.error { color: var(--negative); }
+
+#progress-bar-wrap {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+}
+
+#progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.3s ease;
+}
 
 /* === SUMMARY BAR === */
 .summary-bar {
