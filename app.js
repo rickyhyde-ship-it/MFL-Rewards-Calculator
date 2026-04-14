@@ -273,12 +273,12 @@ function renderSummaryBar(results) {
       <div class="summary-bottom">
         <div class="summary-item">
           <div class="si-label">Player Loans Out</div>
-          <div class="si-value negative">−${formatMFL(totalPlayerLoans)}</div>
+          <div class="si-value neg">−${formatMFL(totalPlayerLoans)}</div>
         </div>
         <div class="sep">·</div>
         <div class="summary-item">
           <div class="si-label">Staff Fees Out</div>
-          <div class="si-value negative">−${formatMFL(totalManagerFees)}</div>
+          <div class="si-value neg">−${formatMFL(totalManagerFees)}</div>
         </div>
         <div class="sep">·</div>
         <div class="summary-item">
