@@ -10,6 +10,14 @@ function parseRewardAmount(lines) {
   return match ? parseFloat(match[0]) : 0;
 }
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // === API ===
 
 const API_BASE = 'https://z519wdyajg.execute-api.us-east-1.amazonaws.com/prod';
@@ -298,17 +306,17 @@ function renderClubCard(result) {
   return `
     <div class="club-card">
       <div class="club-header">
-        <span class="club-name">${result.clubName}</span>
-        <span class="ownership-label ${isStaff ? 'staff' : 'owner'}">${result.ownershipType}</span>
+        <span class="club-name">${escapeHtml(result.clubName)}</span>
+        <span class="ownership-label ${isStaff ? 'staff' : 'owner'}">${escapeHtml(result.ownershipType)}</span>
       </div>
       <div class="comp-row">
-        <span class="comp-name">${result.leagueName}</span>
+        <span class="comp-name">${escapeHtml(result.leagueName)}</span>
         <span class="comp-detail">Rank ${result.leagueRank}</span>
         <span class="comp-reward">${formatMFL(result.leagueReward)}</span>
       </div>
       <div class="comp-row">
-        <span class="comp-name">${result.cupName}</span>
-        <span class="comp-detail">${result.cupStage}</span>
+        <span class="comp-name">${escapeHtml(result.cupName)}</span>
+        <span class="comp-detail">${escapeHtml(result.cupStage)}</span>
         <span class="comp-reward">${formatMFL(result.cupReward)}</span>
       </div>
       ${totalsRow}
