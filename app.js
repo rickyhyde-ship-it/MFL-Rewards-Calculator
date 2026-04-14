@@ -230,6 +230,99 @@ function calculateAll(clubResults) {
 
 // === RENDERING ===
 
+function formatMFL(amount) {
+  return `${amount.toFixed(2)} $MFL`;
+}
+
+function formatPct(multiplier) {
+  const pct = multiplier * 100;
+  return (pct % 1 === 0 ? pct.toString() : pct.toFixed(1)) + '%';
+}
+
+function renderSummaryBar(results) {
+  const owned = results.filter(r => r.ownershipType !== 'Staff');
+  const staff = results.filter(r => r.ownershipType === 'Staff');
+
+  const totalGross = owned.reduce((sum, r) => sum + r.gross, 0);
+  const totalPlayerLoans = owned.reduce((sum, r) => sum + r.playerLoanCost, 0);
+  const totalManagerFees = owned.reduce((sum, r) => sum + r.managerFeeCost, 0);
+  const totalStaffEarnings = staff.reduce((sum, r) => sum + r.staffEarnings, 0);
+  const net = roundUpToNearest005(
+    totalGross - totalPlayerLoans - totalManagerFees + totalStaffEarnings
+  );
+
+  return `
+    <div class="summary-bar">
+      <div class="summary-item">
+        <span class="label">Club Gains</span>
+        <span class="value positive">+${formatMFL(totalGross)}</span>
+      </div>
+      <div class="summary-item">
+        <span class="label">Player Loans Out</span>
+        <span class="value negative">-${formatMFL(totalPlayerLoans)}</span>
+      </div>
+      <div class="summary-item">
+        <span class="label">Manager Fees Out</span>
+        <span class="value negative">-${formatMFL(totalManagerFees)}</span>
+      </div>
+      ${totalStaffEarnings > 0 ? `
+      <div class="summary-item">
+        <span class="label">Staff Earnings</span>
+        <span class="value positive">+${formatMFL(totalStaffEarnings)}</span>
+      </div>` : ''}
+      <div class="summary-item net">
+        <span class="label">Net</span>
+        <span class="value">${net >= 0 ? '+' : ''}${formatMFL(net)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderClubCard(result) {
+  const isStaff = result.ownershipType === 'Staff';
+
+  const totalsRow = isStaff
+    ? `
+      <div class="totals-row">
+        <span>Gross: ${formatMFL(result.gross)}</span>
+        <span>Your Cut: ${formatPct(result.staffMultiplier)} = ${formatMFL(result.staffEarnings)}</span>
+      </div>`
+    : `
+      <div class="totals-row">
+        <span>Gross: ${formatMFL(result.gross)}</span>
+        <span>Player Loans: ${formatPct(result.playerMultiplier)} = -${formatMFL(result.playerLoanCost)}</span>
+        ${result.managerMultiplier > 0 ? `<span>Manager Fee: ${formatPct(result.managerMultiplier)} = -${formatMFL(result.managerFeeCost)}</span>` : ''}
+        <span>Net: ${formatMFL(result.net)}</span>
+      </div>`;
+
+  return `
+    <div class="club-card">
+      <div class="club-header">
+        <span class="club-name">${result.clubName}</span>
+        <span class="ownership-label ${isStaff ? 'staff' : 'owner'}">${result.ownershipType}</span>
+      </div>
+      <div class="comp-row">
+        <span class="comp-name">${result.leagueName}</span>
+        <span class="comp-detail">Rank ${result.leagueRank}</span>
+        <span class="comp-reward">${formatMFL(result.leagueReward)}</span>
+      </div>
+      <div class="comp-row">
+        <span class="comp-name">${result.cupName}</span>
+        <span class="comp-detail">${result.cupStage}</span>
+        <span class="comp-reward">${formatMFL(result.cupReward)}</span>
+      </div>
+      ${totalsRow}
+    </div>
+  `;
+}
+
+function renderResults(results) {
+  const sorted = calculateAll(results);
+  document.getElementById('summary-bar').innerHTML = renderSummaryBar(sorted);
+  document.getElementById('club-cards').innerHTML = sorted.map(renderClubCard).join('');
+  document.getElementById('results').hidden = false;
+}
+
 // === INIT ===
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('calculate-btn').addEventListener('click', handleCalculate);
