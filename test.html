@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tests</title>
+  <style>
+    body { font-family: monospace; padding: 1rem; }
+    .pass { color: green; }
+    .fail { color: red; font-weight: bold; }
+    h2 { margin-top: 1.5rem; }
+  </style>
+</head>
+<body>
+  <h1>MFL Rewards Calculator — Tests</h1>
+  <div id="results"></div>
+  <script src="app.js"></script>
+  <script>
+    const container = document.getElementById('results');
+    let passed = 0, failed = 0;
+
+    function assert(description, actual, expected) {
+      const pass = actual === expected;
+      pass ? passed++ : failed++;
+      const div = document.createElement('div');
+      div.className = pass ? 'pass' : 'fail';
+      div.textContent = pass
+        ? `✓ ${description}`
+        : `✗ ${description} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`;
+      container.appendChild(div);
+    }
+
+    function section(title) {
+      const h = document.createElement('h2');
+      h.textContent = title;
+      container.appendChild(h);
+    }
+
+    section('roundUpToNearest005');
+    assert('exact value unchanged', roundUpToNearest005(1036.0), 1036.0);
+    assert('rounds up to next 0.05', roundUpToNearest005(1036.11), 1036.15);
+    assert('already on 0.05 boundary unchanged', roundUpToNearest005(1036.15), 1036.15);
+    assert('rounds up past boundary', roundUpToNearest005(1036.16), 1036.20);
+    assert('rounds up from near zero', roundUpToNearest005(0.01), 0.05);
+    assert('zero unchanged', roundUpToNearest005(0), 0);
+
+    section('parseRewardAmount');
+    assert('parses "$MFL" string', parseRewardAmount(['1800 $MFL']), 1800);
+    assert('parses numeric string', parseRewardAmount(['2800']), 2800);
+    assert('parses decimal', parseRewardAmount(['45.5 $MFL']), 45.5);
+    assert('returns 0 for empty', parseRewardAmount([]), 0);
+    assert('returns 0 for null', parseRewardAmount(null), 0);
+
+    section('Summary');
+    const summary = document.createElement('p');
+    summary.textContent = `${passed} passed, ${failed} failed`;
+    summary.style.fontWeight = 'bold';
+    container.appendChild(summary);
+  </script>
+</body>
+</html>
