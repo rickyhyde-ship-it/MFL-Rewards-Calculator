@@ -324,10 +324,48 @@ function renderResults(results) {
 }
 
 // === INIT ===
+
+function setStatus(message, isError = false) {
+  const el = document.getElementById('status');
+  el.textContent = message;
+  el.style.color = isError ? 'red' : 'inherit';
+}
+
+async function handleCalculate() {
+  const walletAddress = document.getElementById('wallet-input').value.trim();
+  if (!walletAddress) {
+    setStatus('Please enter a wallet address.', true);
+    return;
+  }
+
+  document.getElementById('results').hidden = true;
+  document.getElementById('calculate-btn').disabled = true;
+  setStatus('Loading...');
+
+  try {
+    const rawData = await fetchAllForWallet(walletAddress);
+
+    if (rawData.length === 0) {
+      setStatus('No clubs found for this wallet address.', true);
+      return;
+    }
+
+    const results = rawData
+      .filter(({ leagueComp, cupComp }) => leagueComp && cupComp)
+      .map(({ clubEntry, contractsData, leagueComp, cupComp }) =>
+        calculateClub(clubEntry, contractsData, leagueComp, cupComp, walletAddress)
+      );
+
+    setStatus('');
+    renderResults(results);
+  } catch (err) {
+    setStatus(`Error: ${err.message}`, true);
+    console.error(err);
+  } finally {
+    document.getElementById('calculate-btn').disabled = false;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('calculate-btn').addEventListener('click', handleCalculate);
 });
-
-async function handleCalculate() {
-  // wired up in Task 9
-}
