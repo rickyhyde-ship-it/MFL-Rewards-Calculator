@@ -12,6 +12,49 @@ function parseRewardAmount(lines) {
 
 // === API ===
 
+const API_BASE = 'https://z519wdyajg.execute-api.us-east-1.amazonaws.com/prod';
+
+async function fetchClubs(walletAddress) {
+  const res = await fetch(`${API_BASE}/clubs?walletAddress=${encodeURIComponent(walletAddress)}`);
+  if (!res.ok) throw new Error(`Failed to fetch clubs (${res.status})`);
+  return res.json();
+}
+
+async function fetchContracts(clubId) {
+  const res = await fetch(`${API_BASE}/contracts?period=currentSeason&clubId=${clubId}&limit=25`);
+  if (!res.ok) throw new Error(`Failed to fetch contracts for club ${clubId} (${res.status})`);
+  return res.json();
+}
+
+async function fetchCompetition(competitionId) {
+  const res = await fetch(`${API_BASE}/competitions/${competitionId}`);
+  if (!res.ok) throw new Error(`Failed to fetch competition ${competitionId} (${res.status})`);
+  return res.json();
+}
+
+async function fetchAllForWallet(walletAddress) {
+  const clubs = await fetchClubs(walletAddress);
+
+  if (!clubs || clubs.length === 0) return [];
+
+  const clubData = await Promise.all(
+    clubs.map(async (clubEntry) => {
+      const leagueEntry = clubEntry.competitions.find(c => c.type === 'LEAGUE');
+      const cupEntry = clubEntry.competitions.find(c => c.type === 'CUP');
+
+      const [contractsData, leagueComp, cupComp] = await Promise.all([
+        fetchContracts(clubEntry.club.id),
+        leagueEntry ? fetchCompetition(leagueEntry.id) : Promise.resolve(null),
+        cupEntry ? fetchCompetition(cupEntry.id) : Promise.resolve(null),
+      ]);
+
+      return { clubEntry, contractsData, leagueComp, cupComp };
+    })
+  );
+
+  return clubData;
+}
+
 // === CALCULATIONS ===
 
 function getOwnershipType(title, contractsData) {
