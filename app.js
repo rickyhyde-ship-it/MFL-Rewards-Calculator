@@ -255,32 +255,36 @@ function renderSummaryBar(results) {
   const totalPlayerLoans = owned.reduce((sum, r) => sum + r.playerLoanCost, 0);
   const totalManagerFees = owned.reduce((sum, r) => sum + r.managerFeeCost, 0);
   const totalStaffEarnings = staff.reduce((sum, r) => sum + r.staffEarnings, 0);
+  const totalMFLEarnings = totalGross + totalStaffEarnings;
   const net = roundUpToNearest005(
     totalGross - totalPlayerLoans - totalManagerFees + totalStaffEarnings
   );
 
   return `
     <div class="summary-bar">
-      <div class="summary-item">
-        <span class="label">Club Gains</span>
-        <span class="value positive">+${formatMFL(totalGross)}</span>
+      <div class="summary-top">
+        <div class="summary-label">Total MFL Earnings</div>
+        <div class="summary-total">+${formatMFL(totalMFLEarnings)}</div>
+        <div class="summary-breakdown">
+          <span>Club Gains <span class="bd-value">+${formatMFL(totalGross)}</span></span>
+          ${totalStaffEarnings > 0 ? `<span>Staff Earnings <span class="bd-value">+${formatMFL(totalStaffEarnings)}</span></span>` : ''}
+        </div>
       </div>
-      <div class="summary-item">
-        <span class="label">Player Loans Out</span>
-        <span class="value negative">-${formatMFL(totalPlayerLoans)}</span>
-      </div>
-      <div class="summary-item">
-        <span class="label">Manager Fees Out</span>
-        <span class="value negative">-${formatMFL(totalManagerFees)}</span>
-      </div>
-      ${totalStaffEarnings > 0 ? `
-      <div class="summary-item">
-        <span class="label">Staff Earnings</span>
-        <span class="value positive">+${formatMFL(totalStaffEarnings)}</span>
-      </div>` : ''}
-      <div class="summary-item net">
-        <span class="label">Net</span>
-        <span class="value">${net >= 0 ? '+' : ''}${formatMFL(net)}</span>
+      <div class="summary-bottom">
+        <div class="summary-item">
+          <div class="si-label">Player Loans Out</div>
+          <div class="si-value negative">−${formatMFL(totalPlayerLoans)}</div>
+        </div>
+        <div class="sep">·</div>
+        <div class="summary-item">
+          <div class="si-label">Staff Fees Out</div>
+          <div class="si-value negative">−${formatMFL(totalManagerFees)}</div>
+        </div>
+        <div class="sep">·</div>
+        <div class="summary-item">
+          <div class="si-label">Net</div>
+          <div class="si-value net">${net >= 0 ? '+' : ''}${formatMFL(net)}</div>
+        </div>
       </div>
     </div>
   `;
