@@ -196,6 +196,20 @@ h1 {
 
 .club-card.owned { border-left-color: var(--accent); }
 .club-card.staff { border-left-color: var(--text-muted); }
+.club-card.player-loan { border-left-color: #818cf8; }
+
+.badge-player {
+  background: #1e1b4b;
+  color: #a5b4fc;
+}
+
+.section-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 1.25rem 0 0.5rem;
+}
 
 .club-header {
   display: flex;

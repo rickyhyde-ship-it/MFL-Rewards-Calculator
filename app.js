@@ -29,15 +29,38 @@ async function fetchClubs(walletAddress) {
 }
 
 async function fetchContracts(clubId) {
-  const res = await fetch(`${API_BASE}/contracts?period=currentSeason&clubId=${clubId}&limit=25`);
-  if (!res.ok) throw new Error(`Failed to fetch contracts for club ${clubId} (${res.status})`);
-  return res.json();
+  const [playerRes, managerRes] = await Promise.all([
+    fetch(`${API_BASE}/contracts?type=PLAYER&period=currentSeason&clubId=${clubId}&limit=26`),
+    fetch(`${API_BASE}/contracts?type=MANAGER&period=currentSeason&clubId=${clubId}&limit=26`),
+  ]);
+  const [playerData, managerData] = await Promise.all([
+    playerRes.ok ? playerRes.json() : { items: [] },
+    managerRes.ok ? managerRes.json() : { items: [] },
+  ]);
+  return { items: [...(playerData.items ?? []), ...(managerData.items ?? [])] };
 }
 
 async function fetchCompetition(competitionId) {
   const res = await fetch(`${API_BASE}/competitions/${competitionId}`);
   if (!res.ok) throw new Error(`Failed to fetch competition ${competitionId} (${res.status})`);
   return res.json();
+}
+
+async function fetchPlayers(walletAddress) {
+  const res = await fetch(`${API_BASE}/players?ownerWalletAddress=${encodeURIComponent(walletAddress)}&limit=1500`);
+  if (!res.ok) throw new Error(`Failed to fetch players (${res.status})`);
+  return res.json();
+}
+
+async function fetchClubCompetitions(clubId) {
+  const res = await fetch(`${API_BASE}/clubs/${clubId}/competitions`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  const items = Array.isArray(data) ? data : (data.competitions ?? data.items ?? []);
+  const live = items.filter(c => c.status === 'LIVE');
+  const league = live.find(c => c.type === 'LEAGUE');
+  const cup = live.find(c => c.type === 'CUP');
+  return league && cup ? { leagueId: league.id, cupId: cup.id } : null;
 }
 
 async function fetchAllForWallet(walletAddress) {
@@ -73,10 +96,10 @@ function getOwnershipType(title, contractsData) {
   return hasManager ? 'Owned | Hired Manager' : 'Owned';
 }
 
-function getOwnerDeductions(contractsData) {
+function getOwnerDeductions(contractsData, ownedPlayerIds) {
   const active = contractsData.items.filter(c => c.status === 'ACTIVE');
   const playerMultiplier = active
-    .filter(c => c.type === 'PLAYER')
+    .filter(c => c.type === 'PLAYER' && !ownedPlayerIds.has(String(c.player)))
     .reduce((sum, c) => sum + c.revenueShare, 0) / 10000;
   const managerMultiplier = active
     .filter(c => c.type === 'MANAGER')
@@ -158,14 +181,52 @@ function getCupGroupWinPrize(competition) {
   return reward ? parseRewardAmount(reward.lines) : 0;
 }
 
-function getCupPlacementReward(competition, clubId) {
-  for (const reward of competition.rewards) {
-    if (!reward.participants || !Array.isArray(reward.participants)) continue;
-    if (reward.participants.includes(clubId)) {
-      return parseRewardAmount(reward.lines);
+// Walk the knockout bracket to find which rank a club achieved.
+// Returns a rank string matching competition.rewards[].ranks, or null if not in knockout.
+function getKnockoutRank(stages, clubId) {
+  const knockoutStage = stages.find(s => Array.isArray(s.rounds));
+  if (!knockoutStage) return null;
+
+  const roundToRank = {
+    'Round of 16': 'Round of 16',
+    'Quarterfinals': 'Quarterfinalists',
+    'Semifinals': 'Semifinalists',
+  };
+
+  for (const round of knockoutStage.rounds) {
+    const match = round.matches.find(
+      m => m.homeClubId === clubId || m.awayClubId === clubId
+    );
+    if (!match) continue;
+
+    if (match.status !== 'ENDED') {
+      // Match not yet played — club has reached this round (projected minimum)
+      return round.name === 'Final' ? 'Runner-up' : (roundToRank[round.name] ?? round.name);
     }
+
+    const isHome = match.homeClubId === clubId;
+    const homeGoals = match.homeScore ?? 0;
+    const awayGoals = match.awayScore ?? 0;
+    const homeWon = homeGoals !== awayGoals
+      ? homeGoals > awayGoals
+      : (match.homePenaltyScore ?? 0) > (match.awayPenaltyScore ?? 0);
+    const clubWon = isHome ? homeWon : !homeWon;
+
+    if (!clubWon) {
+      return round.name === 'Final' ? 'Runner-up' : (roundToRank[round.name] ?? round.name);
+    }
+    if (round.name === 'Final') return 'Winner';
+    // Club won this round — continue to next
   }
-  return 0;
+
+  return null;
+}
+
+function getCupPlacementReward(competition, clubId) {
+  const rank = getKnockoutRank(competition.schedule.stages, clubId);
+  if (!rank) return 0;
+  const reward = competition.rewards.find(r => r.ranks === rank);
+  return reward ? parseRewardAmount(reward.lines) : 0;
 }
 
 function getCupReward(competition, clubId) {
@@ -176,15 +237,13 @@ function getCupReward(competition, clubId) {
 }
 
 function getCupStageLabel(competition, clubId) {
-  for (const reward of competition.rewards) {
-    if (!reward.participants || !Array.isArray(reward.participants)) continue;
-    if (reward.participants.includes(clubId)) return reward.ranks;
-  }
+  const rank = getKnockoutRank(competition.schedule.stages, clubId);
+  if (rank) return rank;
   const wins = getCupGroupWins(competition, clubId);
   return `Group Stage, ${wins} win${wins !== 1 ? 's' : ''}`;
 }
 
-function calculateClub(clubEntry, contractsData, leagueComp, cupComp, walletAddress) {
+function calculateClub(clubEntry, contractsData, leagueComp, cupComp, walletAddress, ownedPlayerIds) {
   const clubId = clubEntry.club.id;
   const title = clubEntry.title;
   const ownershipType = getOwnershipType(title, contractsData);
@@ -217,7 +276,7 @@ function calculateClub(clubEntry, contractsData, leagueComp, cupComp, walletAddr
     };
   }
 
-  const { playerMultiplier, managerMultiplier } = getOwnerDeductions(contractsData);
+  const { playerMultiplier, managerMultiplier } = getOwnerDeductions(contractsData, ownedPlayerIds);
   const playerLoanCost = roundUpToNearest005(gross * playerMultiplier);
   const managerFeeCost = roundUpToNearest005(gross * managerMultiplier);
   const net = roundUpToNearest005(gross - gross * playerMultiplier - gross * managerMultiplier);
@@ -236,6 +295,51 @@ function calculateAll(clubResults) {
   return [...clubResults].sort((a, b) => b.gross - a.gross);
 }
 
+// Extract players with active loans at clubs NOT owned by this wallet.
+// Logs the first player object so field names can be confirmed in DevTools.
+function getLoanedOutPlayers(playersList, ownedClubIds) {
+  return playersList.reduce((acc, player) => {
+    const contract = player.activeContract ?? null;
+    if (!contract || contract.status !== 'ACTIVE' || !contract.revenueShare) return acc;
+
+    const clubId = contract.club?.id ?? null;
+    if (clubId == null) return acc;
+
+    if (!ownedClubIds.has(clubId) && !ownedClubIds.has(String(clubId))) {
+      acc.push({ player, clubId, multiplier: contract.revenueShare / 10000 });
+    }
+    return acc;
+  }, []);
+}
+
+function calculatePlayerLoan(player, multiplier, clubEntry, leagueComp, cupComp) {
+  const clubId = player.activeContract.club.id;
+  const leagueReward = leagueComp ? getLeagueReward(leagueComp, clubId) : 0;
+  const cupReward = cupComp ? getCupReward(cupComp, clubId) : 0;
+  const gross = leagueReward + cupReward;
+  const earnings = roundUpToNearest005(gross * multiplier);
+  const playerName = player.metadata?.firstName && player.metadata?.lastName
+    ? `${player.metadata.firstName} ${player.metadata.lastName}`
+    : (player.metadata?.name ?? `Player #${player.id}`);
+
+  return {
+    playerId: player.id,
+    playerName,
+    clubName: clubEntry?.club?.name ?? clubEntry?.name ?? player.activeContract.club.name,
+    multiplier,
+    leagueName: leagueComp?.name ?? '—',
+    leagueRank: leagueComp
+      ? getLeagueRank(leagueComp.schedule.stages[0].groups[0].members, clubId)
+      : null,
+    leagueReward,
+    cupName: cupComp?.name ?? '—',
+    cupStage: cupComp ? getCupStageLabel(cupComp, clubId) : '—',
+    cupReward,
+    gross,
+    earnings,
+  };
+}
+
 // === RENDERING ===
 
 function formatMFL(amount) {
@@ -247,7 +351,7 @@ function formatPct(multiplier) {
   return (pct % 1 === 0 ? pct.toString() : pct.toFixed(1)) + '%';
 }
 
-function renderSummaryBar(results) {
+function renderSummaryBar(results, playerLoanResults) {
   const owned = results.filter(r => r.ownershipType !== 'Staff');
   const staff = results.filter(r => r.ownershipType === 'Staff');
 
@@ -255,9 +359,10 @@ function renderSummaryBar(results) {
   const totalPlayerLoans = owned.reduce((sum, r) => sum + r.playerLoanCost, 0);
   const totalManagerFees = owned.reduce((sum, r) => sum + r.managerFeeCost, 0);
   const totalStaffEarnings = staff.reduce((sum, r) => sum + r.staffEarnings, 0);
-  const totalMFLEarnings = roundUpToNearest005(totalGross + totalStaffEarnings);
+  const totalPlayerLoanRevenue = playerLoanResults.reduce((sum, r) => sum + r.earnings, 0);
+  const totalMFLEarnings = roundUpToNearest005(totalGross + totalStaffEarnings + totalPlayerLoanRevenue);
   const net = roundUpToNearest005(
-    totalGross - totalPlayerLoans - totalManagerFees + totalStaffEarnings
+    totalGross - totalPlayerLoans - totalManagerFees + totalStaffEarnings + totalPlayerLoanRevenue
   );
 
   return `
@@ -268,6 +373,7 @@ function renderSummaryBar(results) {
         <div class="summary-breakdown">
           <span>Club Gains <span class="bd-value">+${formatMFL(totalGross)}</span></span>
           ${totalStaffEarnings > 0 ? `<span>Staff Earnings <span class="bd-value">+${formatMFL(totalStaffEarnings)}</span></span>` : ''}
+          ${totalPlayerLoanRevenue > 0 ? `<span>Player Loans In <span class="bd-value">+${formatMFL(totalPlayerLoanRevenue)}</span></span>` : ''}
         </div>
       </div>
       <div class="summary-bottom">
@@ -308,7 +414,7 @@ function renderClubCard(result) {
     : `
       <div class="totals-row">
         <span class="total-item"><span class="ti-label">Gross</span> <span class="ti-value pos">${formatMFL(result.gross)}</span></span>
-        <span class="total-item"><span class="ti-label">Loans</span> <span class="ti-value neg">−${formatPct(result.playerMultiplier)} / −${formatMFL(result.playerLoanCost)}</span></span>
+        ${result.playerMultiplier > 0 ? `<span class="total-item"><span class="ti-label">Loans</span> <span class="ti-value neg">−${formatPct(result.playerMultiplier)} / −${formatMFL(result.playerLoanCost)}</span></span>` : ''}
         ${result.managerMultiplier > 0 ? `<span class="total-item"><span class="ti-label">Manager</span> <span class="ti-value neg">−${formatPct(result.managerMultiplier)} / −${formatMFL(result.managerFeeCost)}</span></span>` : ''}
         <span class="total-item"><span class="ti-label">Net</span> <span class="ti-value pos net">${formatMFL(result.net)}</span></span>
       </div>`;
@@ -330,10 +436,42 @@ function renderClubCard(result) {
   `;
 }
 
-function renderResults(results) {
+function renderPlayerCard(result) {
+  return `
+    <div class="club-card player-loan">
+      <div class="club-header">
+        <span class="club-name">${escapeHtml(result.playerName)}</span>
+        <div class="badges">
+          <span class="badge badge-player">On Loan</span>
+          <span class="badge badge-secondary">${escapeHtml(result.clubName)}</span>
+        </div>
+      </div>
+      <div class="comp-grid">
+        <span class="comp-left">${escapeHtml(result.leagueName)}</span>
+        <span class="comp-right">${result.leagueRank !== null ? 'Rank ' + result.leagueRank : '-'} &nbsp;·&nbsp; ${formatMFL(result.leagueReward)}</span>
+        <span class="comp-left">${escapeHtml(result.cupName)}</span>
+        <span class="comp-right">${escapeHtml(result.cupStage)} &nbsp;·&nbsp; ${formatMFL(result.cupReward)}</span>
+      </div>
+      <div class="totals-row">
+        <span class="total-item"><span class="ti-label">Club Gross</span> <span class="ti-value">${formatMFL(result.gross)}</span></span>
+        <span class="total-item"><span class="ti-label">Your Cut</span> <span class="ti-value pos net">+${formatPct(result.multiplier)} / +${formatMFL(result.earnings)}</span></span>
+      </div>
+    </div>
+  `;
+}
+
+function renderResults(results, playerLoanResults) {
   const sorted = calculateAll(results);
-  document.getElementById('summary-bar').innerHTML = renderSummaryBar(sorted);
+  const sortedPlayerLoans = [...playerLoanResults].sort((a, b) => b.earnings - a.earnings);
+  document.getElementById('summary-bar').innerHTML = renderSummaryBar(sorted, sortedPlayerLoans);
   document.getElementById('club-cards').innerHTML = sorted.map(renderClubCard).join('');
+  const playerSection = document.getElementById('player-section');
+  if (sortedPlayerLoans.length > 0) {
+    document.getElementById('player-cards').innerHTML = sortedPlayerLoans.map(renderPlayerCard).join('');
+    playerSection.hidden = false;
+  } else {
+    playerSection.hidden = true;
+  }
   document.getElementById('results').hidden = false;
 }
 
@@ -367,18 +505,27 @@ async function handleCalculate() {
   }
 
   document.getElementById('results').hidden = true;
+  document.getElementById('player-section').hidden = true;
   document.getElementById('calculate-btn').disabled = true;
   setProgress(5);
-  setStatus('Fetching clubs...');
+  setStatus('Fetching clubs and players...');
 
   try {
-    const clubs = await fetchClubs(walletAddress);
+    const [clubs, playersData] = await Promise.all([
+      fetchClubs(walletAddress),
+      fetchPlayers(walletAddress).catch(() => null),
+    ]);
 
     if (!clubs || clubs.length === 0) {
       setStatus('No clubs found for this wallet address.', true);
       clearProgress();
       return;
     }
+
+    const playersList = Array.isArray(playersData)
+      ? playersData
+      : (playersData?.players ?? playersData?.data ?? []);
+    const ownedPlayerIds = new Set(playersList.map(p => String(p.id)));
 
     const total = clubs.length;
     let loaded = 0;
@@ -395,24 +542,61 @@ async function handleCalculate() {
           cupEntry ? fetchCompetition(cupEntry.id) : Promise.resolve(null),
         ]);
         loaded++;
-        setProgress(15 + Math.round((loaded / total) * 75));
+        setProgress(15 + Math.round((loaded / total) * 60));
         setStatus(`Loading data for ${total} club${total !== 1 ? 's' : ''}... (${loaded}/${total})`);
         return { clubEntry, contractsData, leagueComp, cupComp };
       })
     );
 
-    setProgress(95);
-    setStatus('Calculating...');
-
+    const ownedClubIds = new Set(
+      rawData
+        .filter(rd => rd.clubEntry.title === 'MFL_OWNER')
+        .map(rd => rd.clubEntry.club.id)
+    );
     const results = rawData
       .filter(({ leagueComp, cupComp }) => leagueComp && cupComp)
       .map(({ clubEntry, contractsData, leagueComp, cupComp }) =>
-        calculateClub(clubEntry, contractsData, leagueComp, cupComp, walletAddress)
+        calculateClub(clubEntry, contractsData, leagueComp, cupComp, walletAddress, ownedPlayerIds)
       );
+
+    // Process players on loan at external clubs
+    const loanedPlayers = getLoanedOutPlayers(playersList, ownedClubIds);
+    let playerLoanResults = [];
+
+    if (loanedPlayers.length > 0) {
+      setProgress(80);
+      setStatus(`Loading data for ${loanedPlayers.length} loaned player${loanedPlayers.length !== 1 ? 's' : ''}...`);
+
+      // Deduplicate: one fetch per unique club, not one per player
+      const uniqueClubIds = [...new Set(loanedPlayers.map(lp => lp.clubId))];
+      const compMap = new Map();
+      await Promise.all(
+        uniqueClubIds.map(async (clubId) => {
+          try {
+            const comps = await fetchClubCompetitions(clubId);
+            if (!comps) return;
+            const [leagueComp, cupComp] = await Promise.all([
+              fetchCompetition(comps.leagueId),
+              fetchCompetition(comps.cupId),
+            ]);
+            if (leagueComp && cupComp) compMap.set(clubId, { leagueComp, cupComp });
+          } catch (e) {
+            console.warn(`[MFL] Could not load competitions for club ${clubId}:`, e);
+          }
+        })
+      );
+
+      const playerLoanData = loanedPlayers.map(({ player, clubId, multiplier }) => {
+        const comps = compMap.get(clubId);
+        if (!comps) return null;
+        return calculatePlayerLoan(player, multiplier, null, comps.leagueComp, comps.cupComp);
+      });
+      playerLoanResults = playerLoanData.filter(Boolean);
+    }
 
     setStatus('');
     clearProgress();
-    renderResults(results);
+    renderResults(results, playerLoanResults);
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
     clearProgress();
