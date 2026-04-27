@@ -47,9 +47,25 @@ async function fetchCompetition(competitionId) {
 }
 
 async function fetchPlayers(walletAddress) {
-  const res = await fetch(`${API_BASE}/players?ownerWalletAddress=${encodeURIComponent(walletAddress)}&limit=1500`);
-  if (!res.ok) throw new Error(`Failed to fetch players (${res.status})`);
-  return res.json();
+  const allPlayers = [];
+  let beforePlayerId = null;
+
+  while (true) {
+    let url = `${API_BASE}/players?ownerWalletAddress=${encodeURIComponent(walletAddress)}&limit=1500`;
+    if (beforePlayerId !== null) url += `&beforePlayerId=${beforePlayerId}`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch players (${res.status})`);
+    const data = await res.json();
+    const page = Array.isArray(data) ? data : (data.players ?? data.data ?? []);
+
+    allPlayers.push(...page);
+    if (page.length < 1500) break;
+
+    beforePlayerId = Math.min(...page.map(p => p.id));
+  }
+
+  return allPlayers;
 }
 
 async function fetchClubCompetitions(clubId) {
